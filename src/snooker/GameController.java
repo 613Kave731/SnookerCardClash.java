@@ -98,8 +98,11 @@ public class GameController {
         if (state.hasPendingFoul()) {
             Player opponent = players[(turnIndex + 1) % 2];
             int foulPts = state.consumePendingFoul();
+            String reason = state.consumePendingFoulReason();
             state.getScoreBoard().addPoints(opponent.getName(), foulPts);
-            System.out.println("  Foul: " + foulPts + " pts awarded to " + opponent.getName());
+            String msg = "  Foul! " + foulPts + " points awarded to " + opponent.getName();
+            if (!reason.isEmpty()) msg += " for " + reason;
+            System.out.println(msg + ".");
         }
         state.commitBreak(current.getName());
         state.getScoreBoard().print();
@@ -140,8 +143,11 @@ public class GameController {
             if (state.hasPendingFoul()) {
                 Player opponent = players[(turn + 1) % 2];
                 int foulPts = state.consumePendingFoul();
+                String reason = state.consumePendingFoulReason();
                 state.getScoreBoard().addPoints(opponent.getName(), foulPts);
-                System.out.println("  Foul: " + foulPts + " pts awarded to " + opponent.getName());
+                String msg = "  Foul! " + foulPts + " points awarded to " + opponent.getName();
+                if (!reason.isEmpty()) msg += " for " + reason;
+                System.out.println(msg + ".");
             }
 
             state.commitBreak(current.getName());

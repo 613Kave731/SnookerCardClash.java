@@ -33,6 +33,19 @@ public interface IGameRule {
      * Default is 1; EnduranceModeRule doubles the drain to make stamina management critical.
      */
     default int getStaminaDrain() { return 1; }
+
+    /**
+     * Returns the foul penalty for illegally playing {@code playedCard}.
+     * Real snooker rules: minimum penalty is 4; Blue (5), Pink (6), or Black (7)
+     * carry their own ball value as the penalty instead.
+     */
+    default int calculateFoulPenalty(Card playedCard, GameState state) {
+        if (playedCard instanceof ColourCard) {
+            int pts = playedCard.getPoints();
+            return pts >= 5 ? pts : 4;
+        }
+        return 4;
+    }
 }
 
 // =============================================================================
@@ -131,9 +144,8 @@ class SnookerRule implements IGameRule {
         }
         if (card instanceof ColourCard) {
             if (!state.lastPlayedRed()) {
-                // Colour played when a Red was required — 7-point foul
-                state.setPendingFoul(7);
-                System.out.println("  FOUL! Colour played when Red was required — 7 pts awarded to opponent.");
+                int penalty = calculateFoulPenalty(card, state);
+                state.setPendingFoul(penalty, "illegal " + card.getName() + " play");
                 return false;
             }
             return true;
@@ -178,8 +190,15 @@ class EnduranceModeRule implements IGameRule {
             }
         }
 
-        if (card instanceof RedCard)    return state.expectingRed();
-        if (card instanceof ColourCard) return state.lastPlayedRed();
+        if (card instanceof RedCard) return state.expectingRed();
+        if (card instanceof ColourCard) {
+            if (!state.lastPlayedRed()) {
+                int penalty = calculateFoulPenalty(card, state);
+                state.setPendingFoul(penalty, "illegal " + card.getName() + " play");
+                return false;
+            }
+            return true;
+        }
         return true;
     }
 

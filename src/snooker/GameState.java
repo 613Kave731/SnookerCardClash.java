@@ -56,9 +56,12 @@ public class GameState {
     public void advanceClearanceIndex() { clearanceIndex++; }
 
     // --- Pending foul (set by rule, consumed by controller to award opponent pts) ---
-    public void setPendingFoul(int pts)  { pendingFoulPoints = pts; }
+    private String pendingFoulReason = "";
+    public void setPendingFoul(int pts)                { setPendingFoul(pts, ""); }
+    public void setPendingFoul(int pts, String reason) { pendingFoulPoints = pts; pendingFoulReason = reason; }
     public boolean hasPendingFoul()      { return pendingFoulPoints > 0; }
-    public int consumePendingFoul()      { int p = pendingFoulPoints; pendingFoulPoints = 0; return p; }
+    public int    consumePendingFoul()   { int p = pendingFoulPoints; pendingFoulPoints = 0; return p; }
+    public String consumePendingFoulReason() { String r = pendingFoulReason; pendingFoulReason = ""; return r; }
 
     // --- Accessors ---
     public IGameRule   getRule()       { return rule; }
