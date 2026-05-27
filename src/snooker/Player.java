@@ -38,6 +38,13 @@ public abstract class Player implements IScoreable {
         stamina = Math.min(20, stamina + amount);
     }
 
+    /** Resets stamina and clears hand for the start of a new frame in a best-of match. */
+    public void resetForNewFrame() {
+        stamina   = 20;
+        exhausted = false;
+        hand.clear();
+    }
+
     /**
      * Reduces stamina by {@code drain} (rule-dependent) each card play.
      * Sets exhausted=true when stamina first reaches zero — GameController reads this
@@ -74,10 +81,32 @@ public abstract class Player implements IScoreable {
      */
     public void playTurn(GameState state) {
 
+        IGameRule rule = state.getRule();  // resolved early — needed by snooker + glue + stamina steps
+
         // 1. Safety block (from SafetyCard)
         if (state.isSafetyActive()) {
             System.out.println(name + " blocked by Safety — turn skipped.");
             state.clearSafety();
+            return;
+        }
+
+        // 1.5. Snooker block (from SnookerTrapCard) — auto-escape or auto-foul
+        if (state.isSnookered()) {
+            state.clearSnookerTrap();
+            List<Card> handCards = hand.getCards();
+            int escIdx = -1;
+            for (int i = 0; i < handCards.size(); i++) {
+                if (handCards.get(i) instanceof EscapeCard) { escIdx = i; break; }
+            }
+            if (escIdx >= 0) {
+                hand.removeCard(escIdx);
+                System.out.println(name + " plays EscapeCard — snooker evaded! No foul.");
+            } else {
+                state.setPendingFoul(4, "snookered with no escape card");
+                System.out.println(name + " has no EscapeCard — FOUL! 4 pts to opponent.");
+            }
+            reduceStamina(rule.getStaminaDrain());
+            System.out.println("  [Stamina: " + name + " → " + stamina + "/20]");
             return;
         }
 
@@ -94,7 +123,6 @@ public abstract class Player implements IScoreable {
         }
 
         Card chosen = chooseCard(state);
-        IGameRule rule = state.getRule();
 
         // 4. Glue block (from GlueCard): intercepts the first high-value card
         if (state.isGlueActive()) {

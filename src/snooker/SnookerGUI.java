@@ -39,6 +39,12 @@ public class SnookerGUI extends JFrame {
     // Default rule highlighted on the selection screen
     private RuleFactory.RuleType pendingRuleType = RuleFactory.RuleType.CLASSIC;
 
+    // === Best-of match tracking ===
+    private int[] framesWon        = {0, 0};  // [0] = human, [1] = AI
+    private int   bestOf            = 3;       // configurable on the selection screen
+    private boolean frameResultRecorded = false;
+    private JPanel  currentGamePanel;
+
     // === Game UI components (created lazily inside buildGamePanel) ===
     private JLabel    ruleLabel;
     private JLabel    breakLabel;
@@ -78,9 +84,56 @@ public class SnookerGUI extends JFrame {
         panel.setBackground(new Color(0, 60, 0));
         panel.setBorder(BorderFactory.createEmptyBorder(40, 60, 40, 60));
 
-        panel.add(buildSelectionTitle(),   BorderLayout.NORTH);
-        panel.add(buildRuleButtons(),      BorderLayout.CENTER);
-        panel.add(buildPlayButtonPanel(),  BorderLayout.SOUTH);
+        JPanel southStack = new JPanel(new GridLayout(2, 1, 0, 12));
+        southStack.setBackground(new Color(0, 60, 0));
+        southStack.add(buildMatchFormatPanel());
+        southStack.add(buildPlayButtonPanel());
+
+        panel.add(buildSelectionTitle(), BorderLayout.NORTH);
+        panel.add(buildRuleButtons(),    BorderLayout.CENTER);
+        panel.add(southStack,            BorderLayout.SOUTH);
+        return panel;
+    }
+
+    /** Toggle buttons for "1 Frame", "Best of 3", "Best of 5". */
+    private JPanel buildMatchFormatPanel() {
+        JPanel panel = new JPanel(new FlowLayout(FlowLayout.CENTER, 14, 4));
+        panel.setBackground(new Color(0, 60, 0));
+
+        JLabel lbl = new JLabel("Match Format:", SwingConstants.CENTER);
+        lbl.setForeground(new Color(200, 200, 200));
+        lbl.setFont(new Font("Arial", Font.PLAIN, 13));
+        panel.add(lbl);
+
+        String[] labels = {"1 Frame", "Best of 3", "Best of 5"};
+        int[]    values = {1, 3, 5};
+        JToggleButton[] btns  = new JToggleButton[3];
+        ButtonGroup     group = new ButtonGroup();
+        Color gold = new Color(212, 175, 55);
+        Color dim  = new Color(80, 80, 80);
+
+        for (int i = 0; i < 3; i++) {
+            final int val = values[i];
+            JToggleButton btn = new JToggleButton(labels[i]);
+            btn.setFont(new Font("Arial", Font.PLAIN, 12));
+            btn.setForeground(Color.WHITE);
+            btn.setBackground(new Color(44, 44, 44));
+            btn.setOpaque(true);
+            btn.setBorderPainted(true);
+            btn.setFocusPainted(false);
+            btn.setSelected(val == bestOf);
+            btn.setBorder(val == bestOf
+                ? BorderFactory.createLineBorder(gold, 2)
+                : BorderFactory.createLineBorder(dim,  1));
+            btns[i] = btn;
+            group.add(btn);
+            btn.addActionListener(e -> {
+                bestOf = val;
+                for (JToggleButton b : btns) b.setBorder(BorderFactory.createLineBorder(dim, 1));
+                btn.setBorder(BorderFactory.createLineBorder(gold, 2));
+            });
+            panel.add(btn);
+        }
         return panel;
     }
 
@@ -182,12 +235,22 @@ public class SnookerGUI extends JFrame {
         controller     = new GameController(humanPlayer, aiPlayer, RuleFactory.create(ruleType));
         state          = controller.getState();
         controller.initialise();
+        frameResultRecorded = false;
 
-        mainPanel.add(buildGamePanel(), "game");
+        if (currentGamePanel != null) mainPanel.remove(currentGamePanel);
+        currentGamePanel = buildGamePanel();
+        mainPanel.add(currentGamePanel, "game");
         redirectSystemOut();
         cardLayout.show(mainPanel, "game");
         refreshDisplay();
         maybeScheduleAITurn();
+    }
+
+    /** Resets players and starts the next frame without changing the rule or match format. */
+    private void startNextFrame() {
+        humanPlayer.resetForNewFrame();
+        aiPlayer.resetForNewFrame();
+        startGame(activeRuleType);
     }
 
     // =========================================================================
@@ -326,6 +389,8 @@ public class SnookerGUI extends JFrame {
             renderStaminaRest();
         } else if (isHumanTurn && state.isSafetyActive()) {
             renderSafetyBlock();
+        } else if (isHumanTurn && state.isSnookered()) {
+            renderSnookered();
         } else if (isHumanTurn) {
             renderHumanHand();
         } else {
@@ -422,26 +487,120 @@ public class SnookerGUI extends JFrame {
         handPanel.repaint();
     }
 
+    private void renderSnookered() {
+        boolean hasEscape = humanPlayer.getHand().getCards().stream()
+            .anyMatch(c -> c instanceof EscapeCard);
+
+        statusLabel.setText("YOU ARE SNOOKERED!");
+        statusLabel.setForeground(Color.ORANGE);
+
+        handPanel.removeAll();
+        String msg = hasEscape
+            ? "You have an Escape Card — it will be played automatically. No foul!"
+            : "No Escape Card in hand — a 4-point foul will be awarded to the AI.";
+        JLabel infoLbl = new JLabel(
+            "<html><center><b>SNOOKER!</b><br/>" + msg + "</center></html>",
+            SwingConstants.CENTER);
+        infoLbl.setForeground(Color.WHITE);
+        infoLbl.setFont(new Font("Arial", Font.BOLD, 14));
+        handPanel.add(infoLbl);
+
+        JButton resolveBtn = new JButton(hasEscape
+            ? "Play Escape Card — Evade Snooker"
+            : "Accept Foul — 4 pts to " + aiPlayer.getName());
+        resolveBtn.setBackground(hasEscape ? new Color(0, 140, 80) : new Color(180, 50, 50));
+        resolveBtn.setForeground(Color.WHITE);
+        resolveBtn.setFont(new Font("Arial", Font.BOLD, 13));
+        resolveBtn.setFocusPainted(false);
+        resolveBtn.addActionListener(e -> {
+            // Player.playTurn() detects isSnookered() and auto-resolves
+            controller.playNextTurn();
+            refreshDisplay();
+            maybeScheduleAITurn();
+        });
+        handPanel.add(resolveBtn);
+        handPanel.revalidate();
+        handPanel.repaint();
+    }
+
     private void renderGameOver() {
-        String endReason = controller.getEndReason();
-        String winner    = controller.getWinnerName();
-        statusLabel.setText("GAME OVER — " + endReason);
+        // Record frame result exactly once — refreshDisplay() can be called multiple times
+        if (!frameResultRecorded) {
+            frameResultRecorded = true;
+            String fw = controller.getWinnerName();
+            if (fw.equals(humanPlayer.getName()))  framesWon[0]++;
+            else if (fw.equals(aiPlayer.getName())) framesWon[1]++;
+            // "Nobody (Draw!)" → no frame point
+        }
+
+        String endReason   = controller.getEndReason();
+        String frameWinner = controller.getWinnerName();
+        statusLabel.setText("FRAME OVER — " + endReason);
         statusLabel.setForeground(Color.RED);
 
         ScoreBoard sb  = state.getScoreBoard();
         int humanScore = sb.getScore(humanPlayer.getName());
         int aiScore    = sb.getScore(aiPlayer.getName());
 
+        int     needed    = (bestOf / 2) + 1;
+        boolean matchOver = framesWon[0] >= needed || framesWon[1] >= needed;
+        String  matchWinner = framesWon[0] >= needed ? humanPlayer.getName()
+                            : framesWon[1] >= needed ? aiPlayer.getName()
+                            : null;
+
         handPanel.removeAll();
-        JLabel lbl = new JLabel(
-            "<html><center><b>Winner: " + winner + "</b><br/>" +
+
+        // Frame result label
+        JLabel frameLbl = new JLabel(
+            "<html><center>" +
+            (bestOf > 1 ? "<b>Frame Winner: " + frameWinner + "</b><br/>" : "<b>Winner: " + frameWinner + "</b><br/>") +
             humanPlayer.getName() + ": " + humanScore + " pts &nbsp;|&nbsp; " +
-            aiPlayer.getName()   + ": " + aiScore   + " pts<br/>" +
-            "<font color='#FFD700'><i>" + endReason + "</i></font></center></html>",
+            aiPlayer.getName()   + ": " + aiScore    + " pts<br/>" +
+            "<font color='#FFD700'><i>" + endReason + "</i></font>" +
+            (bestOf > 1 ? "<br/>Frames: " + humanPlayer.getName() + " <b>" + framesWon[0] + "</b> — <b>"
+                        + framesWon[1] + "</b> " + aiPlayer.getName() : "") +
+            "</center></html>",
             SwingConstants.CENTER);
-        lbl.setForeground(Color.WHITE);
-        lbl.setFont(new Font("Arial", Font.BOLD, 17));
-        handPanel.add(lbl);
+        frameLbl.setForeground(Color.WHITE);
+        frameLbl.setFont(new Font("Arial", Font.BOLD, 16));
+        handPanel.add(frameLbl);
+
+        if (matchOver) {
+            JLabel matchLbl = new JLabel(
+                "<html><center><font color='#FFD700' size='+1'>🏆 MATCH WINNER: "
+                + matchWinner + "</font></center></html>",
+                SwingConstants.CENTER);
+            matchLbl.setFont(new Font("Arial", Font.BOLD, 18));
+            handPanel.add(matchLbl);
+
+            JButton newMatchBtn = new JButton("New Match");
+            newMatchBtn.setBackground(new Color(0, 100, 50));
+            newMatchBtn.setForeground(Color.WHITE);
+            newMatchBtn.setFont(new Font("Arial", Font.BOLD, 14));
+            newMatchBtn.setFocusPainted(false);
+            newMatchBtn.addActionListener(e -> {
+                framesWon = new int[]{0, 0};
+                cardLayout.show(mainPanel, "ruleSelection");
+            });
+            handPanel.add(newMatchBtn);
+        } else {
+            int framesLeft = needed - Math.max(framesWon[0], framesWon[1]);
+            JLabel progressLbl = new JLabel(
+                "First to " + needed + " frames wins the match — " + framesLeft + " frame(s) to go!",
+                SwingConstants.CENTER);
+            progressLbl.setForeground(new Color(180, 230, 180));
+            progressLbl.setFont(new Font("Arial", Font.PLAIN, 12));
+            handPanel.add(progressLbl);
+
+            JButton nextFrameBtn = new JButton("Next Frame →");
+            nextFrameBtn.setBackground(new Color(50, 130, 200));
+            nextFrameBtn.setForeground(Color.WHITE);
+            nextFrameBtn.setFont(new Font("Arial", Font.BOLD, 14));
+            nextFrameBtn.setFocusPainted(false);
+            nextFrameBtn.addActionListener(e -> startNextFrame());
+            handPanel.add(nextFrameBtn);
+        }
+
         handPanel.revalidate();
         handPanel.repaint();
     }
@@ -449,6 +608,24 @@ public class SnookerGUI extends JFrame {
     private void refreshScorePanel() {
         scorePanel.removeAll();
         ScoreBoard sb = state.getScoreBoard();
+
+        // Best-of match score at the top
+        if (bestOf > 1) {
+            JLabel frameLbl = new JLabel(
+                "Frames  " + framesWon[0] + " — " + framesWon[1],
+                SwingConstants.CENTER);
+            frameLbl.setFont(new Font("Arial", Font.BOLD, 14));
+            frameLbl.setForeground(new Color(212, 175, 55));
+            scorePanel.add(frameLbl);
+
+            int needed = (bestOf / 2) + 1;
+            JLabel boLbl = new JLabel("Best of " + bestOf + "  (need " + needed + ")",
+                SwingConstants.CENTER);
+            boLbl.setFont(new Font("Arial", Font.PLAIN, 10));
+            boLbl.setForeground(new Color(120, 120, 120));
+            scorePanel.add(boLbl);
+            scorePanel.add(new JLabel(" ", SwingConstants.CENTER));
+        }
 
         for (Player player : new Player[]{humanPlayer, aiPlayer}) {
             JLabel scoreLbl = new JLabel(player.getName() + ":  " + sb.getScore(player.getName()) + " pts",
@@ -602,6 +779,8 @@ public class SnookerGUI extends JFrame {
             case "FreeBall" -> new Color(200, 140,   0);
             case "Magnet"   -> new Color(160,  60, 180);
             case "Glue"     -> new Color( 80, 160, 160);
+            case "Snooker"  -> new Color(180,  50, 130);
+            case "Escape"   -> new Color( 30, 160, 180);
             default         -> new Color(100, 100, 100);
         };
     }

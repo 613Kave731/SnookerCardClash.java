@@ -14,6 +14,7 @@ public class GameState {
     private int redsOnTable    = 10;   // decrements each time a RedCard is potted
     private int clearanceIndex = 0;    // index into CLEARANCE_ORDER (Yellow→Black)
     private int pendingFoulPoints = 0; // foul pts to award to opponent after the turn
+    private boolean snookerTrapActive = false; // SnookerTrapCard effect
 
     public GameState(Deck<Card> deck, ScoreBoard sb, IGameRule rule) {
         this.deck  = deck;
@@ -36,6 +37,11 @@ public class GameState {
     public void applyGlue()        { glueActive = true; }
     public boolean isGlueActive()  { return glueActive; }
     public void clearGlue()        { glueActive = false; }
+
+    // --- Snooker trap (SnookerTrapCard) — opponent must escape or foul ---
+    public void applySnookerTrap()  { snookerTrapActive = true; }
+    public boolean isSnookered()    { return snookerTrapActive; }
+    public void clearSnookerTrap()  { snookerTrapActive = false; }
 
     // --- Break accounting ---
     public void addToBreak(int pts)    { currentBreak += pts; }

@@ -6,5 +6,6 @@ public class Hand {
     public void addCard(Card c) { cards.add(c); }
     public Card removeCard(int index) { return cards.remove(index); }
     public List<Card> getCards() { return Collections.unmodifiableList(cards); }
+    public void clear() { cards.clear(); }
     public void print() { cards.forEach(c -> System.out.println(" - " + c)); }
 }

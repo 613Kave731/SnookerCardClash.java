@@ -168,6 +168,41 @@ class GlueCard extends ActionCard {
     public String getDescription() { return "Blocks opponent's next high-value card (≥5 pts)."; }
 }
 
+/**
+ * SnookerTrapCard — locks the opponent behind a ball.
+ * On their next turn the opponent must play an EscapeCard or a 4-point foul
+ * is awarded to the player who set the trap.  This mirrors the real snooker
+ * rule where a player forced into a snooker with no safe exit concedes penalty.
+ */
+class SnookerTrapCard extends ActionCard {
+    public SnookerTrapCard() { super("Snooker"); }
+
+    @Override
+    public void play(GameState state) {
+        state.applySnookerTrap();
+        System.out.println("  SNOOKER set — opponent must escape or foul (4 pts)!");
+    }
+
+    @Override
+    public String getDescription() { return "Lock opponent — they must Escape or concede 4-pt foul."; }
+}
+
+/**
+ * EscapeCard — lets a snookered player escape without committing a foul.
+ * Auto-consumed at the start of that player's turn when a snooker trap is active.
+ */
+class EscapeCard extends ActionCard {
+    public EscapeCard() { super("Escape"); }
+
+    @Override
+    public void play(GameState state) {
+        System.out.println("  ESCAPE played — snooker evaded without committing a foul!");
+    }
+
+    @Override
+    public String getDescription() { return "Escape a snooker trap — no foul penalty applied."; }
+}
+
 // ─── Exceptions ───────────────────────────────────────────────────────────────
 
 class InvalidMoveException extends Exception {

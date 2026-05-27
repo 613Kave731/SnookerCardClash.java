@@ -1,6 +1,7 @@
 package snooker;
 
 import java.util.*;
+import java.util.function.Predicate;
 
 /**
  * GameController manages the high-level game loop.
@@ -123,14 +124,26 @@ public class GameController {
     }
 
     private void dealInitialHands() {
-        for (int i = 0; i < 5; i++) {
-            for (Player p : players) {
-                try {
-                    p.drawCard(state.getDeck());
-                } catch (Exception e) {
-                    System.err.println("Error during initial deal: " + e.getMessage());
-                }
+        for (Player p : players) {
+            // Option B: guarantee at least 1 Red and 1 Colour in every opening hand
+            dealGuaranteed(p, c -> c instanceof RedCard);
+            dealGuaranteed(p, c -> c instanceof ColourCard);
+            // Fill remaining 3 slots with random draws
+            for (int i = 0; i < 3; i++) {
+                try { p.drawCard(state.getDeck()); }
+                catch (EmptyDeckException e) { break; }
             }
+        }
+    }
+
+    /** Draws the first card matching {@code type} from the deck and adds it to the player's hand.
+     *  Falls back to a random draw if no matching card remains. */
+    private void dealGuaranteed(Player p, Predicate<Card> type) {
+        try {
+            p.getHand().addCard(state.getDeck().drawIf(type));
+        } catch (EmptyDeckException e) {
+            try { p.drawCard(state.getDeck()); }
+            catch (EmptyDeckException ex) { /* deck exhausted — hand stays shorter */ }
         }
     }
 
@@ -196,6 +209,12 @@ class CardFactory {
         deck.addCard(new MagnetCard());
         deck.addCard(new GlueCard());
         deck.addCard(new GlueCard());
+
+        // Snooker mechanic cards (2 traps + 2 escapes = balanced)
+        deck.addCard(new SnookerTrapCard());
+        deck.addCard(new SnookerTrapCard());
+        deck.addCard(new EscapeCard());
+        deck.addCard(new EscapeCard());
 
         deck.shuffle();
         return deck;
