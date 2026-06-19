@@ -93,31 +93,6 @@ class SafetyCard extends ActionCard {
     public String getDescription() { return "Safety shot — opponent skips turn."; }
 }
 
-class FoulCard extends ActionCard {
-    public FoulCard() { super("Foul"); }
-
-    @Override
-    public void play(GameState state) throws FoulException {
-        throw new FoulException("Foul committed!", 4);
-    }
-
-    @Override
-    public String getDescription() { return "Foul — opponent gains 4 pts."; }
-}
-
-class FreeBallCard extends ActionCard {
-    public FreeBallCard() { super("FreeBall"); }
-
-    @Override
-    public void play(GameState state) {
-        state.setFreeBall(true);
-        System.out.println("  FREE BALL — next ball treated as Red.");
-    }
-
-    @Override
-    public String getDescription() { return "Free Ball — next ball counts as Red."; }
-}
-
 /**
  * MagnetCard — power-up that pulls a Red card directly from the deck into the hand.
  *
@@ -126,28 +101,49 @@ class FreeBallCard extends ActionCard {
  * inside Player; MagnetCard receives it only for the duration of this call.
  */
 class MagnetCard extends ActionCard {
+    // High-to-low order used when the player needs a Colour next
+    private static final String[] COLOUR_BY_VALUE = {"Black", "Pink", "Blue", "Brown", "Green", "Yellow"};
+
     public MagnetCard() { super("Magnet"); }
 
     @Override
     public void play(GameState state) {
-        System.out.println("  MAGNET activated — searching deck for a Red!");
+        System.out.println("  MAGNET activated — pulling the card you need from the deck!");
     }
 
+    /**
+     * Draws whatever type the current player needs next.
+     * If they are expecting a Red, pulls a Red; otherwise pulls the highest-value
+     * Colour still in the deck.  Overloads Card.applyHandEffect() (hand + state signature).
+     */
     @Override
     void applyHandEffect(Hand hand, GameState state) {
-        // Typed local variable helps the compiler (and IDE) resolve the generic method call.
         Deck<Card> deck = state.getDeck();
-        try {
-            Card red = deck.drawIf(c -> c instanceof RedCard);
-            hand.addCard(red);
-            System.out.println("  Magnet: Red drawn from deck and added to your hand.");
-        } catch (EmptyDeckException e) {
-            System.out.println("  Magnet: No Reds remain in the deck.");
+        if (state.expectingRed()) {
+            try {
+                hand.addCard(deck.drawIf(c -> c instanceof RedCard));
+                System.out.println("  Magnet: Red drawn — ready to pot!");
+            } catch (EmptyDeckException e) {
+                System.out.println("  Magnet: No Reds remain in deck.");
+            }
+        } else {
+            boolean found = false;
+            for (String colour : COLOUR_BY_VALUE) {
+                final String target = colour;
+                try {
+                    Card c = deck.drawIf(card -> card instanceof ColourCard && card.getName().equals(target));
+                    hand.addCard(c);
+                    System.out.println("  Magnet: " + c.getName() + " drawn — ready to pot!");
+                    found = true;
+                    break;
+                } catch (EmptyDeckException ignored) {}
+            }
+            if (!found) System.out.println("  Magnet: No Colours remain in deck.");
         }
     }
 
     @Override
-    public String getDescription() { return "Draws a Red from the deck into your hand."; }
+    public String getDescription() { return "Draws the card type you need next (Red or best Colour)."; }
 }
 
 /**
@@ -196,7 +192,8 @@ class EscapeCard extends ActionCard {
 
     @Override
     public void play(GameState state) {
-        System.out.println("  ESCAPE played — snooker evaded without committing a foul!");
+        // Played voluntarily (not auto-triggered) — card is consumed but has no effect
+        System.out.println("  ESCAPE played (held in reserve — no active snooker to evade).");
     }
 
     @Override

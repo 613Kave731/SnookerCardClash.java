@@ -1,17 +1,24 @@
 package snooker;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public class GameState {
     private final ScoreBoard scoreBoard;
     private final Deck<Card> deck;
     private final IGameRule  rule;          // injected rule — DIP: state carries the strategy
     private int currentBreak = 0;
-    private boolean lastWasRed = false, freeBall = false;
     private boolean safetyActive = false;
+
+    // Per-player sequence tracking: each player independently alternates Red→Colour→Red.
+    // Keyed by player name; defaults to false (expecting Red) when absent.
+    private final Map<String, Boolean> lastRedByPlayer = new HashMap<>();
+    private String currentPlayerName = "";
     private boolean glueActive   = false;   // GlueCard effect
 
 
     // --- Snooker simulation state ---
-    private int redsOnTable    = 10;   // decrements each time a RedCard is potted
+    private int redsOnTable    = 15;   // decrements each time a RedCard is potted
     private int clearanceIndex = 0;    // index into CLEARANCE_ORDER (Yellow→Black)
     private int pendingFoulPoints = 0; // foul pts to award to opponent after the turn
     private boolean snookerTrapActive = false; // SnookerTrapCard effect
@@ -22,11 +29,13 @@ public class GameState {
         this.rule  = rule;
     }
 
-    // --- Sequencing flags (read by IGameRule implementations) ---
-    public boolean expectingRed()  { return !lastWasRed || freeBall; }
-    public boolean lastPlayedRed() { return lastWasRed  || freeBall; }
-    public void setLastPlayedRed(boolean v) { lastWasRed = v; freeBall = false; }
-    public void setFreeBall(boolean v)      { freeBall = v; }
+    // --- Current player (set by GameController before each turn) ---
+    public void setCurrentPlayer(String name) { currentPlayerName = name; }
+
+    // --- Sequencing flags (per-player: each player tracks their own Red→Colour alternation) ---
+    public boolean expectingRed()  { return !lastRedByPlayer.getOrDefault(currentPlayerName, false); }
+    public boolean lastPlayedRed() { return  lastRedByPlayer.getOrDefault(currentPlayerName, false); }
+    public void setLastPlayedRed(boolean v) { lastRedByPlayer.put(currentPlayerName, v); }
 
     // --- Safety (SafetyCard) ---
     public void applySafety()       { safetyActive = true; }
@@ -49,7 +58,6 @@ public class GameState {
     public void commitBreak(String p)  {
         scoreBoard.addPoints(p, currentBreak);
         currentBreak = 0;
-        lastWasRed   = false;
     }
 
     // --- Reds on table ---
@@ -68,6 +76,12 @@ public class GameState {
     public boolean hasPendingFoul()      { return pendingFoulPoints > 0; }
     public int    consumePendingFoul()   { int p = pendingFoulPoints; pendingFoulPoints = 0; return p; }
     public String consumePendingFoulReason() { String r = pendingFoulReason; pendingFoulReason = ""; return r; }
+
+    // --- Pending stamina penalty (used by STAMINA_DRAIN foul behavior) ---
+    private int pendingStaminaPenalty = 0;
+    public void setPendingStaminaPenalty(int drain) { pendingStaminaPenalty = drain; }
+    public boolean hasPendingStaminaPenalty()       { return pendingStaminaPenalty > 0; }
+    public int consumePendingStaminaPenalty()       { int p = pendingStaminaPenalty; pendingStaminaPenalty = 0; return p; }
 
     // --- Accessors ---
     public IGameRule   getRule()       { return rule; }

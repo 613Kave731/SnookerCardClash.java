@@ -94,6 +94,7 @@ public class GameController {
     public void playNextTurn() {
         if (isGameOver()) return;
         Player current = players[turnIndex % 2];
+        state.setCurrentPlayer(current.getName());
         current.playTurn(state);
         // Award any pending foul (e.g. colour-when-red-required) to the opponent
         if (state.hasPendingFoul()) {
@@ -104,6 +105,11 @@ public class GameController {
             String msg = "  Foul! " + foulPts + " points awarded to " + opponent.getName();
             if (!reason.isEmpty()) msg += " for " + reason;
             System.out.println(msg + ".");
+        }
+        // Stamina foul (STAMINA_DRAIN behavior): drain from the fouling player instead
+        if (state.hasPendingStaminaPenalty()) {
+            current.loseStamina(state.consumePendingStaminaPenalty());
+            System.out.println("  Foul! " + current.getName() + " loses stamina (now " + current.getStamina() + "/20).");
         }
         state.commitBreak(current.getName());
         state.getScoreBoard().print();
@@ -151,6 +157,7 @@ public class GameController {
         int turn = 0;
         while (!isGameOver()) {
             Player current = players[turn % 2];
+            state.setCurrentPlayer(current.getName());
             current.playTurn(state);
 
             if (state.hasPendingFoul()) {
@@ -161,6 +168,10 @@ public class GameController {
                 String msg = "  Foul! " + foulPts + " points awarded to " + opponent.getName();
                 if (!reason.isEmpty()) msg += " for " + reason;
                 System.out.println(msg + ".");
+            }
+            if (state.hasPendingStaminaPenalty()) {
+                current.loseStamina(state.consumePendingStaminaPenalty());
+                System.out.println("  Foul! " + current.getName() + " loses stamina (now " + current.getStamina() + "/20).");
             }
 
             state.commitBreak(current.getName());
@@ -187,8 +198,8 @@ class CardFactory {
     public static Deck<Card> buildStandardDeck() {
         Deck<Card> deck = new Deck<>();
 
-        // Add 10 Reds (matches GameState.redsOnTable initial value)
-        for (int i = 0; i < 10; i++) {
+        // Add 15 Reds (matches GameState.redsOnTable initial value)
+        for (int i = 0; i < 15; i++) {
             deck.addCard(new RedCard());
         }
 
@@ -202,7 +213,6 @@ class CardFactory {
 
         // Tactical action cards
         deck.addCard(new SafetyCard());
-        deck.addCard(new FreeBallCard());
 
         // Power-up cards
         deck.addCard(new MagnetCard());

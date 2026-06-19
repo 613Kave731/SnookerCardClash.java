@@ -23,6 +23,10 @@ public class RuleFactory {
         ENDURANCE(
             "Endurance Mode",
             "Strict Red→Colour + clearance order. Stamina drains x2 — manage it or lose."
+        ),
+        CUSTOM(
+            "Custom Rules",
+            "Compose a brand-new rule: pick a Validity Policy, Scoring Policy, and Foul Behavior."
         );
 
         private final String displayName;
@@ -40,9 +44,22 @@ public class RuleFactory {
     /** Returns the IGameRule implementation for the given rule type. */
     public static IGameRule create(RuleType type) {
         return switch (type) {
-            case CLASSIC   -> new SnookerRule();        // full snooker rules with fouls + clearance
+            case CLASSIC   -> new SnookerRule();
             case CHAOS     -> new ChaosModeRule();
             case ENDURANCE -> new EnduranceModeRule();
+            case CUSTOM    -> new ComposableRuleBuilder().build();  // default policies; normally use overload below
         };
+    }
+
+    /**
+     * Overloaded factory — builds a ComposableRule from a pre-configured ComposableRuleBuilder.
+     * For all other RuleTypes the builder is ignored and the standard rule is returned.
+     * Demonstrates ad-hoc polymorphism (overloading): same method name, different signature.
+     * The builder carries behavioural strategies (enums), not just numeric parameters —
+     * so each call can produce a genuinely new rule, not just a tuned version of an existing one.
+     */
+    public static IGameRule create(RuleType type, ComposableRuleBuilder builder) {
+        if (type == RuleType.CUSTOM) return builder.build();
+        return create(type);
     }
 }

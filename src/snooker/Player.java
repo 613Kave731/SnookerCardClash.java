@@ -38,6 +38,9 @@ public abstract class Player implements IScoreable {
         stamina = Math.min(20, stamina + amount);
     }
 
+    /** Applies a foul-based stamina penalty (e.g. STAMINA_DRAIN foul behavior). */
+    public void loseStamina(int drain) { reduceStamina(drain); }
+
     /** Resets stamina and clears hand for the start of a new frame in a best-of match. */
     public void resetForNewFrame() {
         stamina   = 20;
@@ -124,19 +127,7 @@ public abstract class Player implements IScoreable {
 
         Card chosen = chooseCard(state);
 
-        // 4. Glue block (from GlueCard): intercepts the first high-value card
-        if (state.isGlueActive()) {
-            state.clearGlue();   // glue is consumed regardless of card value
-            if (chosen.getPoints() >= 5) {
-                System.out.println("  GLUE blocks " + name + "'s "
-                    + chosen.getName() + "! Card wasted.");
-                hand.removeCard(hand.getCards().indexOf(chosen));
-                reduceStamina(rule.getStaminaDrain());
-                return;
-            }
-        }
-
-        // 5. Validate via the injected rule (DIP: this method is rule-agnostic)
+        // 4. Validate via the injected rule (DIP: this method is rule-agnostic)
         //    InvalidMoveException signals a strict ordering violation (e.g. clearance phase).
         boolean valid;
         try {
@@ -150,11 +141,25 @@ public abstract class Player implements IScoreable {
         }
 
         if (!valid) {
+            rule.onInvalidPlay(chosen, state);   // apply foul penalty only when card actually played
             System.out.println("  Invalid move [" + chosen.getName()
                 + "] under current rules — turn forfeited.");
             hand.removeCard(hand.getCards().indexOf(chosen));
             reduceStamina(rule.getStaminaDrain());
             return;
+        }
+
+        // 4.5. Glue block — checked after validation so invalid moves don't consume Glue.
+        //      Glue is consumed on any valid play; only high-value (≥5 pt) cards are blocked.
+        if (state.isGlueActive()) {
+            state.clearGlue();
+            if (chosen.getPoints() >= 5) {
+                System.out.println("  GLUE blocks " + name + "'s "
+                    + chosen.getName() + "! Card wasted.");
+                hand.removeCard(hand.getCards().indexOf(chosen));
+                reduceStamina(rule.getStaminaDrain());
+                return;
+            }
         }
 
         // 6. Calculate points BEFORE play() mutates state flags
@@ -269,11 +274,14 @@ class AggressiveAI extends Player {
         IGameRule rule = state.getRule();
         List<Card> hand = getHand().getCards();
 
-        // Find the highest-value valid card; fall back to first card if none qualifies.
-        // InvalidMoveException (strict ordering violation) is treated as invalid here.
+        // Highest-value valid card; if none found, fall back to an ActionCard (always legal)
+        // before giving up with hand.get(0). This avoids spurious fouls from invalid ball plays.
         return hand.stream()
             .filter(c -> { try { return rule.isValid(c, state); } catch (InvalidMoveException e) { return false; } })
             .max(Comparator.comparingInt(c -> rule.calculatePoints(c, state)))
-            .orElse(hand.get(0));
+            .orElseGet(() -> hand.stream()
+                .filter(c -> c instanceof ActionCard)
+                .findFirst()
+                .orElse(hand.get(0)));
     }
 }

@@ -13,5 +13,7 @@ public class SnookerCardClash {
             SnookerGUI gui = new SnookerGUI(p1, p2);
             gui.setVisible(true);
         });
+
+
     }
 }

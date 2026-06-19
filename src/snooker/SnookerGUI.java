@@ -37,7 +37,9 @@ public class SnookerGUI extends JFrame {
     private final JPanel     mainPanel;
 
     // Default rule highlighted on the selection screen
-    private RuleFactory.RuleType pendingRuleType = RuleFactory.RuleType.CLASSIC;
+    private RuleFactory.RuleType pendingRuleType    = RuleFactory.RuleType.CLASSIC;
+    // Builder for the Custom rule — holds behavioural policies, updated by the config dialog
+    private final ComposableRuleBuilder pendingCustomBuilder = new ComposableRuleBuilder();
 
     // === Best-of match tracking ===
     private int[] framesWon        = {0, 0};  // [0] = human, [1] = AI
@@ -156,7 +158,7 @@ public class SnookerGUI extends JFrame {
     }
 
     private JPanel buildRuleButtons() {
-        JPanel rulesPanel = new JPanel(new GridLayout(1, 3, 20, 0));
+        JPanel rulesPanel = new JPanel(new GridLayout(2, 2, 20, 15));
         rulesPanel.setBackground(new Color(0, 60, 0));
 
         Color charcoal = new Color(44, 44, 44);       // #2C2C2C
@@ -198,6 +200,8 @@ public class SnookerGUI extends JFrame {
                 }
                 btn.setBackground(charcoal);
                 btn.setBorder(BorderFactory.createLineBorder(gold, 3));
+                // Custom rule: immediately open the parameter dialog
+                if (type == RuleFactory.RuleType.CUSTOM) showCustomRuleDialog();
             });
 
             rulesPanel.add(btn);
@@ -232,7 +236,10 @@ public class SnookerGUI extends JFrame {
      */
     private void startGame(RuleFactory.RuleType ruleType) {
         activeRuleType = ruleType;
-        controller     = new GameController(humanPlayer, aiPlayer, RuleFactory.create(ruleType));
+        IGameRule rule = (ruleType == RuleFactory.RuleType.CUSTOM)
+            ? RuleFactory.create(ruleType, pendingCustomBuilder)   // overloaded: inject configured rule
+            : RuleFactory.create(ruleType);
+        controller = new GameController(humanPlayer, aiPlayer, rule);
         state          = controller.getState();
         controller.initialise();
         frameResultRecorded = false;
@@ -317,6 +324,128 @@ public class SnookerGUI extends JFrame {
         border.setTitleColor(Color.WHITE);
         handPanel.setBorder(border);
         return handPanel;
+    }
+
+    /**
+     * Opens a modal dialog letting the player compose a brand-new rule from three
+     * independent behavioural policies. Each dimension has a JComboBox whose options
+     * represent distinct game behaviours — not numeric dials — so every combination
+     * produces a genuinely new rule rather than a parametric variant of an existing one.
+     *
+     * Demonstrates: Builder pattern (ComposableRuleBuilder fluent API),
+     * ad-hoc polymorphism (overloaded RuleFactory.create), and DIP (GameController
+     * receives only IGameRule — never knows a ComposableRule is active).
+     */
+    private void showCustomRuleDialog() {
+        JDialog dlg = new JDialog(this, "Compose Your Own Rule", true);
+        dlg.setSize(560, 420);
+        dlg.setLocationRelativeTo(this);
+        dlg.setResizable(false);
+
+        Color bg  = new Color(25, 25, 25);
+        Color fg  = new Color(220, 220, 220);
+        Color dim = new Color(140, 140, 140);
+        Font  lf  = new Font("Arial", Font.PLAIN, 12);
+        Font  bf  = new Font("Arial", Font.BOLD,  12);
+
+        dlg.getContentPane().setBackground(bg);
+
+        JPanel form = new JPanel();
+        form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
+        form.setBackground(bg);
+        form.setBorder(BorderFactory.createEmptyBorder(16, 22, 14, 22));
+
+        // --- helper: build one labelled row (label + combo) ---
+        // ValidityPolicy row
+        JLabel vpLbl = new JLabel("Validity Policy — which cards are legal:");
+        vpLbl.setForeground(fg); vpLbl.setFont(bf); vpLbl.setAlignmentX(0f);
+        JComboBox<ValidityPolicy> vpBox = new JComboBox<>(ValidityPolicy.values());
+        vpBox.setSelectedItem(pendingCustomBuilder.getValidityPolicy());
+        vpBox.setAlignmentX(0f); vpBox.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+        JLabel vpDesc = new JLabel(pendingCustomBuilder.getValidityPolicy().description);
+        vpDesc.setForeground(dim); vpDesc.setFont(lf); vpDesc.setAlignmentX(0f);
+        vpBox.addActionListener(e -> vpDesc.setText(
+            ((ValidityPolicy) vpBox.getSelectedItem()).description));
+
+        // ScoringPolicy row
+        JLabel spLbl = new JLabel("Scoring Policy — how points are counted:");
+        spLbl.setForeground(fg); spLbl.setFont(bf); spLbl.setAlignmentX(0f);
+        JComboBox<ScoringPolicy> spBox = new JComboBox<>(ScoringPolicy.values());
+        spBox.setSelectedItem(pendingCustomBuilder.getScoringPolicy());
+        spBox.setAlignmentX(0f); spBox.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+        JLabel spDesc = new JLabel(pendingCustomBuilder.getScoringPolicy().description);
+        spDesc.setForeground(dim); spDesc.setFont(lf); spDesc.setAlignmentX(0f);
+        spBox.addActionListener(e -> spDesc.setText(
+            ((ScoringPolicy) spBox.getSelectedItem()).description));
+
+        // Score multiplier (only relevant when MULTIPLIED is selected)
+        JLabel mulLbl = new JLabel("  Score multiplier (0.5–3.0) — for Multiplied policy:");
+        mulLbl.setForeground(dim); mulLbl.setFont(lf); mulLbl.setAlignmentX(0f);
+        JSpinner mulSpin = new JSpinner(new SpinnerNumberModel(
+            pendingCustomBuilder.getScoreMultiplier(), 0.5, 3.0, 0.5));
+        mulSpin.setAlignmentX(0f); mulSpin.setMaximumSize(new Dimension(120, 26));
+        mulSpin.setEnabled(pendingCustomBuilder.getScoringPolicy() == ScoringPolicy.MULTIPLIED);
+        spBox.addActionListener(e ->
+            mulSpin.setEnabled(spBox.getSelectedItem() == ScoringPolicy.MULTIPLIED));
+
+        // FoulBehavior row
+        JLabel fbLbl = new JLabel("Foul Behavior — what a foul does:");
+        fbLbl.setForeground(fg); fbLbl.setFont(bf); fbLbl.setAlignmentX(0f);
+        JComboBox<FoulBehavior> fbBox = new JComboBox<>(FoulBehavior.values());
+        fbBox.setSelectedItem(pendingCustomBuilder.getFoulBehavior());
+        fbBox.setAlignmentX(0f); fbBox.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+        JLabel fbDesc = new JLabel(pendingCustomBuilder.getFoulBehavior().description);
+        fbDesc.setForeground(dim); fbDesc.setFont(lf); fbDesc.setAlignmentX(0f);
+        fbBox.addActionListener(e -> fbDesc.setText(
+            ((FoulBehavior) fbBox.getSelectedItem()).description));
+
+        // Stamina drain spinner
+        JLabel stmLbl = new JLabel("Stamina drain per turn (1–3):");
+        stmLbl.setForeground(fg); stmLbl.setFont(bf); stmLbl.setAlignmentX(0f);
+        JSpinner stmSpin = new JSpinner(new SpinnerNumberModel(
+            pendingCustomBuilder.getStaminaDrain(), 1, 3, 1));
+        stmSpin.setAlignmentX(0f); stmSpin.setMaximumSize(new Dimension(80, 26));
+
+        // Apply button
+        JButton applyBtn = new JButton("Apply & Close");
+        applyBtn.setBackground(new Color(200, 150, 0));
+        applyBtn.setForeground(Color.WHITE);
+        applyBtn.setFont(new Font("Arial", Font.BOLD, 13));
+        applyBtn.setFocusPainted(false);
+        applyBtn.setBorderPainted(false);
+        applyBtn.setAlignmentX(0f);
+        applyBtn.addActionListener(e -> {
+            // Fluent method chaining — configures all policies in one expression
+            pendingCustomBuilder
+                .validityPolicy((ValidityPolicy) vpBox.getSelectedItem())
+                .scoringPolicy((ScoringPolicy)   spBox.getSelectedItem())
+                .foulBehavior((FoulBehavior)      fbBox.getSelectedItem())
+                .scoreMultiplier((Double)  mulSpin.getValue())
+                .staminaDrain((Integer)    stmSpin.getValue());
+            dlg.dispose();
+        });
+
+        int gap = 6;
+        form.add(vpLbl);  form.add(Box.createVerticalStrut(4));
+        form.add(vpBox);  form.add(vpDesc);
+        form.add(Box.createVerticalStrut(gap));
+        form.add(spLbl);  form.add(Box.createVerticalStrut(4));
+        form.add(spBox);  form.add(spDesc);
+        form.add(mulLbl); form.add(mulSpin);
+        form.add(Box.createVerticalStrut(gap));
+        form.add(fbLbl);  form.add(Box.createVerticalStrut(4));
+        form.add(fbBox);  form.add(fbDesc);
+        form.add(Box.createVerticalStrut(gap));
+        form.add(stmLbl); form.add(Box.createVerticalStrut(4));
+        form.add(stmSpin);
+        form.add(Box.createVerticalStrut(12));
+        form.add(applyBtn);
+
+        JScrollPane scroll = new JScrollPane(form);
+        scroll.setBorder(null);
+        scroll.getViewport().setBackground(bg);
+        dlg.add(scroll);
+        dlg.setVisible(true);  // blocks until disposed (modal dialog)
     }
 
     private JPanel buildScorePanel() {
@@ -776,7 +905,6 @@ public class SnookerGUI extends JFrame {
             case "Pink"     -> new Color(220, 100, 160);
             case "Black"    -> new Color( 30,  30,  30);
             case "Safety"   -> new Color(100, 100, 220);
-            case "FreeBall" -> new Color(200, 140,   0);
             case "Magnet"   -> new Color(160,  60, 180);
             case "Glue"     -> new Color( 80, 160, 160);
             case "Snooker"  -> new Color(180,  50, 130);
